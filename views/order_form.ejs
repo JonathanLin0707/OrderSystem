@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= title %></title>
+    <link rel="stylesheet" href="/style.css">
+    <script>
+        // 設定訂購時間預設為現在
+        function setDefaultOrderTime() {
+            const now = new Date();
+            now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+            document.getElementById('order_time').value = now.toISOString().slice(0, 16);
+        }
+
+        window.addEventListener('load', setDefaultOrderTime);
+
+        function submitPost(url, data = {}) {
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = url;
+            for (const key in data) {
+                if (data.hasOwnProperty(key)) {
+                    const hiddenField = document.createElement('input');
+                    hiddenField.type = 'hidden';
+                    hiddenField.name = key;
+                    hiddenField.value = data[key];
+                    form.appendChild(hiddenField);
+                }
+            }
+            document.body.appendChild(form);
+            form.submit();
+        }
+    </script>
+</head>
+<body>
+    <header>
+        <h1><%= title %></h1>
+        <nav>
+            <a href="/">商品管理</a>
+            <a href="/customer-report">客戶報表</a>
+            <a href="/product-report">商品報表</a>
+            <a href="/dashboard">統計儀表板</a>
+        </nav>
+    </header>
+    <main>
+        <section>
+            <h2>商品資訊</h2>
+            <p>名稱：<%= product.name %></p>
+            <p>單價：<%= product.price %></p>
+            <p>狀態：<%= product.status === 'active' ? '進行中' : '已結束' %></p>
+        </section>
+
+        <hr>
+
+        <section>
+            <h2><%= product.status === 'active' || product.status === 'processing' ? '新增/編輯訂單' : '訂單狀態' %></h2>
+            <% if (product.status === 'active' || product.status === 'processing') { %>
+            <form action="/products/<%= product.id %>/order" method="POST" id="orderForm">
+                <div>
+                    <label>客戶名稱：</label>
+                    <input type="text" id="customer_name" name="customer_name" required>
+                </div>
+                <div>
+                    <label>數量：</label>
+                    <input type="number" id="quantity" name="quantity" value="1" min="1" required>
+                </div>
+                <div>
+                    <label>選項 (顏色、大小等)：</label>
+                    <input type="text" id="options" name="options" placeholder="例如：黑、大">
+                </div>
+                <div>
+                    <label>訂購時間：</label>
+                    <input type="datetime-local" id="order_time" name="order_time" required>
+                </div>
+                <button type="submit" id="submitBtn" class="btn btn-primary">提交訂單</button>
+                <button type="button" id="cancelBtn" class="btn btn-secondary" style="display:none;" onclick="resetForm()">取消編輯</button>
+            </form>
+            <% } else { %>
+            <p style="color: red;">此商品已結單，無法新增或編輯訂單。</p>
+            <% } %>
+        </section>
+
+        <hr>
+
+        <section>
+            <h2>已輸入訂單</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>客戶名稱</th>
+                        <th>數量</th>
+                        <th>選項</th>
+                        <th>付款狀態</th>
+                        <th>訂購時間</th>
+                        <th>操作</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% orders.forEach(order => { %>
+                    <tr>
+                        <td><%= order.customer_name %></td>
+                        <td><%= order.quantity %></td>
+                        <td><%= order.options %></td>
+                        <td>
+                            <% if (order.payment_status === 'paid') { %>
+                                <button class="btn btn-success" onclick="submitPost('/orders/<%= order.id %>/toggle-payment')">已付款</button>
+                            <% } else { %>
+                                <button class="btn btn-secondary" onclick="submitPost('/orders/<%= order.id %>/toggle-payment')">未付款</button>
+                            <% } %>
+                        </td>
+                        <td><%= order.order_time || order.created_at %></td>
+                        <td>
+                            <% if (product.status === 'active' || product.status === 'processing') { %>
+                            <button type="button" class="btn btn-warning" onclick="editOrder('<%= order.id %>')">編輯</button>
+                            <% } %>
+                        </td>
+                        <td>                            
+                            <button class="btn btn-danger" onclick="if(confirm('確定要刪除此訂單嗎？')) submitPost('/orders/<%= order.id %>/delete')">刪除</button>
+                        </td>
+                    </tr>
+                    <% }) %>
+                </tbody>
+            </table>
+        </section>
+    </main>
+
+    <script>
+        function editOrder(id) {
+            fetch(`/orders/${id}`)
+                .then(response => response.json())
+                .then(order => {
+                    document.getElementById('customer_name').value = order.customer_name;
+                    document.getElementById('quantity').value = order.quantity;
+                    document.getElementById('options').value = order.options;
+                    if (order.order_time) {
+                        document.getElementById('order_time').value = order.order_time.replace(' ', 'T');
+                    }
+                    
+                    const form = document.getElementById('orderForm');
+                    form.action = `/orders/${id}`;
+                    
+                    const submitBtn = document.getElementById('submitBtn');
+                    submitBtn.innerText = '更新訂單';
+                    submitBtn.className = 'btn btn-warning';
+                    
+                    document.getElementById('cancelBtn').style.display = 'inline-block';
+                    
+                    window.scrollTo(0, 0);
+                })
+                .catch(err => alert('讀取訂單失敗'));
+        }
+
+        function resetForm() {
+            document.getElementById('customer_name').value = '';
+            document.getElementById('quantity').value = '1';
+            document.getElementById('options').value = '';
+            setDefaultOrderTime();
+            
+            const form = document.getElementById('orderForm');
+            form.action = '/products/<%= product.id %>/order';
+            
+            const submitBtn = document.getElementById('submitBtn');
+            submitBtn.innerText = '提交訂單';
+            submitBtn.className = 'btn btn-primary';
+            
+            document.getElementById('cancelBtn').style.display = 'none';
+        }
+    </script>
+</body>
+</html>

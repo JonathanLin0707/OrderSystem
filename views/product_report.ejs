@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= title %></title>
+    <link rel="stylesheet" href="/style.css">
+    <script>
+        function submitPost(url, data = {}) {
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = url;
+            for (const key in data) {
+                if (data.hasOwnProperty(key)) {
+                    const hiddenField = document.createElement('input');
+                    hiddenField.type = 'hidden';
+                    hiddenField.name = key;
+                    hiddenField.value = data[key];
+                    form.appendChild(hiddenField);
+                }
+            }
+            document.body.appendChild(form);
+            form.submit();
+        }
+    </script>
+</head>
+<body>
+    <header>
+        <h1><%= title %></h1>
+        <nav>
+            <a href="/">商品管理</a>
+            <a href="/customer-report">客戶報表</a>
+            <a href="/product-report">商品報表</a>
+            <a href="/dashboard">統計儀表板</a>
+        </nav>
+    </header>
+
+    <div class="container">
+        <div class="filter-controls">
+            <form action="/product-report" method="GET" id="filterForm" style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+                <div>
+                    <label for="productSelect" style="width: auto; margin-right: 5px;">商品：</label>
+                    <select name="product_id" id="productSelect" onchange="document.getElementById('filterForm').submit()">
+                        <option value="all" <%= selectedProductId === 'all' ? 'selected' : '' %>>-- 顯示所有商品 --</option>
+                        <% allProducts.forEach(p => { %>
+                            <option value="<%= p.id %>" <%= selectedProductId == p.id ? 'selected' : '' %>>
+                                <%= p.name %>
+                            </option>
+                        <% }); %>
+                    </select>
+                </div>
+                <div>
+                    <label style="width: auto; margin-right: 5px;">開始日期：</label>
+                    <input type="date" name="date_from" value="<%= date_from || '' %>" onchange="document.getElementById('filterForm').submit()">
+                </div>
+                <div>
+                    <label style="width: auto; margin-right: 5px;">結束日期：</label>
+                    <input type="date" name="date_to" value="<%= date_to || '' %>" onchange="document.getElementById('filterForm').submit()">
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <a href="/product-report" class="btn btn-secondary btn-sm">重設</a>
+                    <button type="button" class="btn btn-info btn-sm" onclick="exportExcel()">匯出 Excel</button>
+                </div>
+            </form>
+        </div>
+
+        <script>
+            function exportExcel() {
+                const form = document.getElementById('filterForm');
+                const formData = new FormData(form);
+                const params = new URLSearchParams();
+                for (const [key, value] of formData.entries()) {
+                    if (value) params.append(key, value);
+                }
+                window.location.href = '/product-report/export?' + params.toString();
+            }
+        </script>
+
+        <div class="product-reports">
+            <% if (selectedProductId === 'all' || !selectedProductId) { %>
+                <div class="customer-card">
+                    <h2>所有商品訂單</h2>
+                    <% if (orders && orders.length > 0) { %>
+                        <% orders.forEach(group => { %>
+                            <h3 style="margin-top: 25px; border-bottom: 2px solid #eee; padding-bottom: 5px;">
+                                商品：<%= group.product_name %> (共 <%= group.orders.length %> 筆訂單)
+                            </h3>
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>訂購時間</th>
+                                        <th>客戶名稱</th>
+                                        <th>選項</th>
+                                        <th>數量</th>
+                                        <th>單價</th>
+                                        <th>小計</th>
+                                        <th>付款狀態</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <% group.orders.forEach(order => { %>
+                                        <tr>
+                                            <td><%= order.order_time || order.created_at %></td>
+                                            <td><%= order.customer_name %></td>
+                                            <td><%= order.options %></td>
+                                            <td><%= order.quantity %></td>
+                                            <td><%= order.product_price.toFixed(2) %></td>
+                                            <td><%= order.item_total.toFixed(2) %></td>
+                                            <td>
+                                                <% if (order.payment_status === 'paid') { %>
+                                                    <button class="btn btn-success" onclick="submitPost('/orders/<%= order.order_id %>/toggle-payment')">已付款</button>
+                                                <% } else { %>
+                                                    <button class="btn btn-secondary" onclick="submitPost('/orders/<%= order.order_id %>/toggle-payment')">未付款</button>
+                                                <% } %>
+                                            </td>
+                                        </tr>
+                                    <% }); %>
+                                </tbody>
+                            </table>
+                        <% }); %>
+                    <% } else { %>
+                        <p>目前無訂單資料。</p>
+                    <% } %>
+                </div>
+            <% } else if (product) { %>
+                <div class="customer-card">
+                    <h2>商品：<%= product.name %> (單價: <%= product.price.toFixed(2) %>)</h2>
+                    <% if (orders && orders.length > 0) { %>
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>客戶名稱</th>
+                                    <th>選項</th>
+                                    <th>數量</th>
+                                    <th>單價</th>
+                                    <th>小計</th>
+                                    <th>付款狀態</th>
+                                    <th>訂購時間</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <% orders.forEach(order => { %>
+                                    <tr>
+                                        <td><%= order.customer_name %></td>
+                                        <td><%= order.options %></td>
+                                        <td><%= order.quantity %></td>
+                                        <td><%= order.product_price.toFixed(2) %></td>
+                                        <td><%= order.item_total.toFixed(2) %></td>
+                                        <td>
+                                            <% if (order.payment_status === 'paid') { %>
+                                                <button class="btn btn-success" onclick="submitPost('/orders/<%= order.order_id %>/toggle-payment')">已付款</button>
+                                            <% } else { %>
+                                                <button class="btn btn-secondary" onclick="submitPost('/orders/<%= order.order_id %>/toggle-payment')">未付款</button>
+                                            <% } %>
+                                        </td>
+                                        <td><%= order.created_at %></td>
+                                    </tr>
+                                <% }); %>
+                            </tbody>
+                        </table>
+                    <% } else { %>
+                        <p>該商品在此區間內無訂單資料。</p>
+                    <% } %>
+                </div>
+            <% } else { %>
+                <div class="customer-card">
+                    <p>請先由上方選單選取商品以查看訂單明細。</p>
+                </div>
+            <% } %>
+        </div>
+    </div>
+</body>
+</html>

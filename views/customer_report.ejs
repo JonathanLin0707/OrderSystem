@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= title %></title>
+    <link rel="stylesheet" href="/style.css">
+    <script>
+        function submitPost(url, data = {}) {
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = url;
+            for (const key in data) {
+                if (data.hasOwnProperty(key)) {
+                    const hiddenField = document.createElement('input');
+                    hiddenField.type = 'hidden';
+                    hiddenField.name = key;
+                    hiddenField.value = data[key];
+                    form.appendChild(hiddenField);
+                }
+            }
+            document.body.appendChild(form);
+            form.submit();
+        }
+    </script>
+</head>
+<body>
+    <header>
+        <h1><%= title %></h1>
+        <nav>
+            <a href="/">商品管理</a>
+            <a href="/customer-report">客戶報表</a>
+            <a href="/product-report">商品報表</a>
+            <a href="/dashboard">統計儀表板</a>
+        </nav>
+    </header>
+
+    <div class="container">
+        <div class="filter-controls">
+            <form action="/customer-report" method="GET" id="filterForm" style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+                <div>
+                    <label for="customerSelect" style="width: auto; margin-right: 5px;">客戶：</label>
+                    <select name="customer" id="customerSelect" onchange="document.getElementById('filterForm').submit()">
+                        <option value="">顯示所有客戶</option>
+                        <% allCustomers.forEach(c => { %>
+                            <option value="<%= c.customer_name %>" <%= selectedCustomer === c.customer_name ? 'selected' : '' %>>
+                                <%= c.customer_name %>
+                            </option>
+                        <% }); %>
+                    </select>
+                </div>
+                <div>
+                    <label style="width: auto; margin-right: 5px;">開始日期：</label>
+                    <input type="date" name="date_from" value="<%= date_from || '' %>" onchange="document.getElementById('filterForm').submit()">
+                </div>
+                <div>
+                    <label style="width: auto; margin-right: 5px;">結束日期：</label>
+                    <input type="date" name="date_to" value="<%= date_to || '' %>" onchange="document.getElementById('filterForm').submit()">
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <a href="/customer-report" class="btn btn-secondary btn-sm">重設</a>
+                    <button type="button" class="btn btn-info btn-sm" onclick="exportExcel()">匯出 Excel</button>
+                </div>
+            </form>
+        </div>
+
+        <script>
+            function exportExcel() {
+                const form = document.getElementById('filterForm');
+                const formData = new FormData(form);
+                const params = new URLSearchParams();
+                for (const [key, value] of formData.entries()) {
+                    if (value) params.append(key, value);
+                }
+                window.location.href = '/customer-report/export?' + params.toString();
+            }
+        </script>
+
+        <div class="customer-reports">
+            <% if (customers && customers.length > 0) { %>
+                <% customers.forEach(customer => { %>
+                    <div class="customer-card">
+                        <h2><%= customer.customer_name %></h2>
+                        <div style="margin-bottom: 15px; font-weight: bold;">
+                            總消費: <span style="color: #333;"><%= customer.total_spend.toFixed(2) %></span> | 
+                            已付款: <span style="color: green;"><%= customer.paid_total.toFixed(2) %></span> | 
+                            未付款: <span style="color: red;"><%= customer.unpaid_total.toFixed(2) %></span>
+                        </div>
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>訂購時間</th>
+                                    <th>商品名稱</th>
+                                    <th>選項</th>
+                                    <th>數量</th>
+                                    <th>單價</th>
+                                    <th>小計</th>
+                                    <th>付款狀態</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <% customer.orders.forEach(order => { %>
+                                    <tr>
+                                        <td><%= order.order_time || order.created_at %></td>
+                                        <td><%= order.product_name %></td>
+                                        <td><%= order.options %></td>
+                                        <td><%= order.quantity %></td>
+                                        <td><%= order.product_price.toFixed(2) %></td>
+                                        <td><%= order.item_total.toFixed(2) %></td>
+                                        <td>
+                                            <% if (order.payment_status === 'paid') { %>
+                                                <button class="btn btn-success" onclick="submitPost('/orders/<%= order.order_id %>/toggle-payment')">已付款</button>
+                                            <% } else { %>
+                                                <button class="btn btn-secondary" onclick="submitPost('/orders/<%= order.order_id %>/toggle-payment')">未付款</button>
+                                            <% } %>
+                                        </td>
+                                    </tr>
+                                <% }); %>
+                            </tbody>
+                        </table>
+                    </div>
+                <% }); %>
+            <% } else { %>
+                <div class="customer-card">
+                    <p>目前沒有客戶訂單資料。</p>
+                </div>
+            <% } %>
+        </div>
+    </div>
+</body>
+</html>

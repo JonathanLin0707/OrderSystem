@@ -1,0 +1,21 @@
+{
+  "name": "ordersystem",
+  "version": "1.0.0",
+  "description": "團購結單統計系統",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "build": "node build-dist.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "better-sqlite3": "^12.8.0",
+    "ejs": "^5.0.1",
+    "express": "^5.2.1",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {}
+}

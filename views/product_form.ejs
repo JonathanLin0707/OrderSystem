@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= title %></title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <header>
+        <h1><%= title %></h1>
+        <nav>
+            <a href="/">商品管理</a>
+            <a href="/customer-report">客戶報表</a>
+            <a href="/product-report">商品報表</a>
+            <a href="/dashboard">統計儀表板</a>
+        </nav>
+    </header>
+    <main>
+        <form action="<%= product ? '/products/' + product.id : '/products' %>" method="POST">
+            <div>
+                <label>商品名稱：</label>
+                <input type="text" name="name" value="<%= product ? product.name : '' %>" required>
+            </div>
+            <div>
+                <label>廠商：</label>
+                <input type="text" name="vendor" value="<%= product ? product.vendor : '' %>">
+            </div>
+            <div>
+                <label>單價：</label>
+                <input type="number" name="price" step="0.01" value="<%= product ? product.price : '' %>" required>
+            </div>
+            <div>
+                <label>上架日期：</label>
+                <input type="date" name="start_date" value="<%= product ? product.start_date : '' %>">
+            </div>
+            <div>
+                <label>結單日期：</label>
+                <input type="date" name="end_date" value="<%= product ? product.end_date : '' %>">
+            </div>
+            <% if (product) { %>
+            <div>
+                <label>狀態：</label>
+                <select name="status">
+                    <option value="active" <%= product.status === 'active' ? 'selected' : '' %>>進行中</option>
+                    <option value="processing" <%= product.status === 'processing' ? 'selected' : '' %>>下單中</option>
+                    <option value="ended" <%= product.status === 'ended' ? 'selected' : '' %>>已結束</option>
+                </select>
+            </div>
+            <% } %>
+            <button type="submit"><%= product ? '更新' : '新增' %></button>
+            <a href="/">取消</a>
+        </form>
+
+        <% if (product) { %>
+        <hr>
+        <form action="/products/<%= product.id %>/delete" method="POST" onsubmit="return confirm('確定要刪除嗎？');">
+            <button type="submit" style="background-color: red; color: white;">刪除此商品</button>
+        </form>
+        <% } %>
+    </main>
+</body>
+</html>

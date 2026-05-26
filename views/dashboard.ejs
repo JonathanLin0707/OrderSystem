@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= title %></title>
+    <link rel="stylesheet" href="/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <header>
+        <h1><%= title %></h1>
+        <nav>
+            <a href="/">商品管理</a>
+            <a href="/customer-report">客戶報表</a>
+            <a href="/product-report">商品報表</a>
+            <a href="/dashboard">統計儀表板</a>
+        </nav>
+    </header>
+    <main>
+        <section>
+            <h2>銷售概況</h2>
+            <form action="/dashboard" method="GET" style="margin-bottom: 20px; background: #fff; padding: 15px; border: 1px solid #ddd; border-radius: 8px; display: flex; align-items: center; gap: 10px;">
+                <label style="width: auto;">開始日期：</label>
+                <input type="date" name="date_from" value="<%= date_from || '' %>" class="form-control" style="width: auto;">
+                <label style="width: auto;">結束日期：</label>
+                <input type="date" name="date_to" value="<%= date_to || '' %>" class="form-control" style="width: auto;">
+                <button type="submit" class="btn btn-primary">篩選</button>
+                <a href="/dashboard" class="btn btn-secondary">重設</a>
+            </form>
+            <button class="btn btn-info" onclick="window.location.href = '/export';">匯出 Excel 報表</button>
+        </section>
+
+        <section class="chart-container">
+            <div class="chart-box">
+                <div class="chart-header">
+                    <h3>熱銷商品 Top 3</h3>
+                    <div class="chart-toggle">
+                        <button class="btn btn-sm btn-outline-primary active" onclick="updateProductChart('qty')">數量</button>
+                        <button class="btn btn-sm btn-outline-primary" onclick="updateProductChart('amount')">金額</button>
+                    </div>
+                </div>
+                <canvas id="productChart"></canvas>
+            </div>
+            <div class="chart-box">
+                <div class="chart-header">
+                    <h3>客戶貢獻 Top 3</h3>
+                    <div class="chart-toggle">
+                        <button class="btn btn-sm btn-outline-primary active" onclick="updateCustomerChart('qty')">數量</button>
+                        <button class="btn btn-sm btn-outline-primary" onclick="updateCustomerChart('amount')">金額</button>
+                    </div>
+                </div>
+                <canvas id="customerChart"></canvas>
+            </div>
+        </section>
+
+        <hr>
+        <section>
+            <h2>商品銷售統計</h2>
+            <div style="margin-bottom: 15px; font-weight: bold;">
+                總銷售金額: <span style="color: #333;"><%= grandTotal.grand_total %></span>
+            </div>            
+            <table>
+                <thead>
+                    <tr>
+                        <th>商品名稱</th>
+                        <th>單價</th>
+                        <th>總數量</th>
+                        <th>總金額</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% productStats.forEach(stat => { %>
+                    <tr>
+                        <td><%= stat.name %></td>
+                        <td><%= stat.price %></td>
+                        <td><%= stat.total_quantity || 0 %></td>
+                        <td><%= stat.total_amount || 0 %></td>
+                    </tr>
+                    <% }) %>
+                </tbody>
+            </table>
+        </section>
+
+        <hr>
+
+        <section>
+            <h2>選項細分統計</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>商品名稱</th>
+                        <th>選項 (顏色/尺寸等)</th>
+                        <th>數量</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% optionStats.forEach(stat => { %>
+                    <tr>
+                        <td><%= stat.name %></td>
+                        <td><%= stat.options %></td>
+                        <td><%= stat.total_quantity %></td>
+                    </tr>
+                    <% }) %>
+                </tbody>
+            </table>
+        </section>
+
+        <hr>
+
+        <section>
+            <h2>客戶訂購統計</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>客戶名稱</th>
+                        <th>商品種類數</th>
+                        <th>總數量</th>
+                        <th>總消費金額</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% customerStats.forEach(stat => { %>
+                    <tr>
+                        <td><%= stat.customer_name %></td>
+                        <td><%= stat.item_count %></td>
+                        <td><%= stat.total_quantity %></td>
+                        <td><%= stat.total_spend %></td>
+                    </tr>
+                    <% }) %>
+                </tbody>
+            </table>
+        </section>
+    </main>
+
+    <script>
+        const topData = <%- JSON.stringify(topData) %>;
+        let productChart, customerChart;
+
+        function initCharts() {
+            // 商品圖表
+            const pCtx = document.getElementById('productChart').getContext('2d');
+            productChart = new Chart(pCtx, {
+                type: 'bar',
+                data: getChartData(topData.products.qty, '數量', 'rgba(54, 162, 235, 0.6)', 'total_quantity'),
+                options: getChartOptions('商品銷售排名')
+            });
+
+            // 客戶圖表
+            const cCtx = document.getElementById('customerChart').getContext('2d');
+            customerChart = new Chart(cCtx, {
+                type: 'bar',
+                data: getChartData(topData.customers.qty, '訂單數量', 'rgba(75, 192, 192, 0.6)', 'total_quantity'),
+                options: getChartOptions('客戶貢獻排名')
+            });
+        }
+
+        function getChartData(data, label, bgColor, valueField) {
+            return {
+                labels: data.map(item => item.name || item.customer_name),
+                datasets: [{
+                    label: label,
+                    data: data.map(item => item[valueField]),
+                    backgroundColor: bgColor,
+                    borderColor: bgColor.replace('0.6', '1'),
+                    borderWidth: 1
+                }]
+            };
+        }
+
+        function getChartOptions(title) {
+            return {
+                indexAxis: 'y',
+                responsive: true,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.dataset.label || '';
+                                if (label) {
+                                    label += ': ';
+                                }
+                                if (context.parsed.x !== null) {
+                                    if (label.includes('金額') || label.includes('消費')) {
+                                        label += new Intl.NumberFormat('zh-TW', { style: 'currency', currency: 'TWD', minimumFractionDigits: 0 }).format(context.parsed.x);
+                                    } else {
+                                        label += context.parsed.x;
+                                    }
+                                }
+                                return label;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: { beginAtZero: true }
+                }
+            };
+        }
+
+        function updateProductChart(type) {
+            const data = type === 'qty' ? topData.products.qty : topData.products.amount;
+            const label = type === 'qty' ? '數量' : '金額';
+            const field = type === 'qty' ? 'total_quantity' : 'total_amount';
+            productChart.data = getChartData(data, label, 'rgba(54, 162, 235, 0.6)', field);
+            productChart.update();
+            toggleActiveBtn('productChart', type);
+        }
+
+        function updateCustomerChart(type) {
+            const data = type === 'qty' ? topData.customers.qty : topData.customers.amount;
+            const label = type === 'qty' ? '訂單數量' : '消費金額';
+            const field = type === 'qty' ? 'total_quantity' : 'total_spend';
+            customerChart.data = getChartData(data, label, 'rgba(75, 192, 192, 0.6)', field);
+            customerChart.update();
+            toggleActiveBtn('customerChart', type);
+        }
+
+        function toggleActiveBtn(chartId, type) {
+            const container = document.getElementById(chartId).parentElement;
+            const btns = container.querySelectorAll('.chart-toggle button');
+            btns.forEach(btn => btn.classList.remove('active'));
+            if (type === 'qty') btns[0].classList.add('active');
+            else btns[1].classList.add('active');
+        }
+
+        window.onload = initCharts;
+    </script>
+</body>
+</html>

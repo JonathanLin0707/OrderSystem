@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= title %></title>
+    <link rel="stylesheet" href="/style.css">
+    <script>
+        /**
+         * 模擬表單提交 POST 請求
+         * @param {string} url 提交目標 URL
+         * @param {object} data 要提交的數據 (key-value)
+         */
+        function submitPost(url, data = {}) {
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = url;
+
+            for (const key in data) {
+                if (data.hasOwnProperty(key)) {
+                    const hiddenField = document.createElement('input');
+                    hiddenField.type = 'hidden';
+                    hiddenField.name = key;
+                    hiddenField.value = data[key];
+                    form.appendChild(hiddenField);
+                }
+            }
+
+            document.body.appendChild(form);
+            form.submit();
+        }
+    </script>
+</head>
+<body>
+    <header>
+        <h1><%= title %></h1>
+        <nav>
+            <a href="/">商品管理</a>
+            <a href="/customer-report">客戶報表</a>
+            <a href="/product-report">商品報表</a>
+            <a href="/dashboard">統計儀表板</a>
+        </nav>
+    </header>
+    <main>
+        <section>
+            <h2>商品篩選</h2>
+            <form action="/" method="GET" class="filter-form">
+                <div class="filter-group">
+                    <label>上架日期：</label>
+                    <input type="date" name="start_from" value="<%= filters.start_from || '' %>">
+                    <span>至</span>
+                    <input type="date" name="start_to" value="<%= filters.start_to || '' %>">
+                </div>
+                <div class="filter-group">
+                    <label>結單日期：</label>
+                    <input type="date" name="end_from" value="<%= filters.end_from || '' %>">
+                    <span>至</span>
+                    <input type="date" name="end_to" value="<%= filters.end_to || '' %>">
+                </div>
+                <div class="filter-actions">
+                    <button type="submit" class="btn btn-primary">篩選</button>
+                    <button type="button" class="btn btn-secondary" onclick="location.href='/'">重設</button>
+                </div>
+            </form>
+        </section>
+
+        <!-- 頁簽分類 -->
+        <div class="tab-container">
+            <% 
+                const queryParams = new URLSearchParams();
+                if (filters.start_from) queryParams.set('start_from', filters.start_from);
+                if (filters.start_to) queryParams.set('start_to', filters.start_to);
+                if (filters.end_from) queryParams.set('end_from', filters.end_from);
+                if (filters.end_to) queryParams.set('end_to', filters.end_to);
+                
+                function getTabUrl(status) {
+                    const params = new URLSearchParams(queryParams);
+                    params.set('status', status);
+                    return '/?' + params.toString();
+                }
+            %>
+            <a href="<%= getTabUrl('active') %>" class="tab-item <%= filters.status === 'active' ? 'active' : '' %>">進行中</a>
+            <a href="<%= getTabUrl('processing') %>" class="tab-item <%= filters.status === 'processing' ? 'active' : '' %>">下單中</a>
+            <a href="<%= getTabUrl('ended') %>" class="tab-item <%= filters.status === 'ended' ? 'active' : '' %>">已結束</a>
+            <a href="<%= getTabUrl('all') %>" class="tab-item <%= filters.status === 'all' ? 'active' : '' %>">全部</a>
+        </div>
+
+        <section>
+            <h2>商品列表</h2>
+            <button class="btn btn-primary" onclick="location.href='/products/new'">新增商品</button>
+            <button class="btn btn-info" onclick="location.href='/products/export'">匯出整合報表</button>
+            <table>
+                <thead>
+                    <tr>
+                        <th>編號</th>
+                        <th>廠商</th>
+                        <th>商品名稱</th>
+                        <th>金額</th>
+                        <th>上架日期</th>
+                        <th>結單日期</th>
+                        <th>狀態</th>
+                        <th>操作</th>
+                        <th>功能</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% products.forEach(product => { %>
+                    <tr>
+                        <td><%= product.id %></td>
+                        <td><%= product.vendor %></td>
+                        <td><%= product.name %></td>
+                        <td><%= product.price %></td>
+                        <td><%= product.start_date %></td>
+                        <td><%= product.end_date %></td>
+                        <td>
+                            <% if (product.status === 'active') { %>
+                                <span style="color: green;">進行中</span>
+                            <% } else if (product.status === 'processing') { %>
+                                <span style="color: orange;">下單中</span>
+                            <% } else { %>
+                                <span style="color: gray;">已結束</span>
+                            <% } %>
+                        </td>
+                        <td>
+                            <button class="btn btn-primary" onclick="location.href='/products/<%= product.id %>/order'">輸入訂單</button>                            
+                        <td>
+                            <% if (product.status === 'active') { %>
+                                <button class="btn btn-warning" onclick="submitPost('/products/<%= product.id %>/status', {status: 'processing'})">下單</button>
+                                <button class="btn btn-secondary" onclick="submitPost('/products/<%= product.id %>/status', {status: 'ended'})">結束</button>
+                            <% } else if (product.status === 'processing') { %>
+                                <button class="btn btn-success" onclick="submitPost('/products/<%= product.id %>/status', {status: 'active'})">未下單</button>
+                                <button class="btn btn-secondary" onclick="submitPost('/products/<%= product.id %>/status', {status: 'ended'})">結束</button>
+                            <% } else { %>
+                                <button class="btn btn-info" onclick="submitPost('/products/<%= product.id %>/status', {status: 'active'})">重開</button>
+                            <% } %>
+                        </td>
+                        <td>
+                            <button class="btn btn-warning" onclick="location.href='/products/<%= product.id %>/edit'">編輯</button>
+                        </td>
+                    </tr>
+                    <% }) %>
+                </tbody>
+            </table>
+        </section>
+    </main>
+</body>
+</html>
