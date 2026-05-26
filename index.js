@@ -1,6 +1,8 @@
 const express = require('express');
 const path = require('path');
 const db = require('./db');
+const multer = require('multer');
+const upload = multer({ dest: 'uploads/' });
 const app = express();
 const port = 3018;
 
@@ -85,8 +87,152 @@ app.get('/products/new', (req, res) => {
     res.render('product_form', { title: '新增商品', product: null });
 });
 
+// 匯出整合性的商品與訂單 Excel (商品管理頁面使用)
+app.get('/products/export', (req, res) => {
+    const xlsx = require('xlsx');
+
+    // 查詢所有商品及其訂單明細
+    const sql = `
+        SELECT
+            p.id AS "商品ID",
+            o.id AS "訂單ID",
+            p.name AS "商品名稱",
+            p.price AS "單價",
+            p.start_date AS "上架日期",
+            p.end_date AS "結單日期",
+            CASE WHEN p.status = 'active' THEN '進行中'
+                 WHEN p.status = 'processing' THEN '下單中'
+                 WHEN p.status = 'ended' THEN '已結束'
+                 ELSE p.status END AS "商品狀態",
+            o.customer_name AS "客戶名稱",
+            o.options AS "選項",
+            o.quantity AS "數量",
+            (o.quantity * p.price) AS "小計",
+            CASE WHEN o.payment_status = 'paid' THEN '已付款' 
+                 WHEN o.payment_status = 'unpaid' THEN '未付款'
+                 ELSE '' END AS "付款狀態",
+            COALESCE(o.order_time, o.created_at) AS "訂購時間"
+        FROM
+            products p
+        LEFT JOIN
+            orders o ON p.id = o.product_id
+        ORDER BY
+            p.name, o.created_at DESC
+    `;
+
+    const data = db.prepare(sql).all();
+
+    const wb = xlsx.utils.book_new();
+    const ws = xlsx.utils.json_to_sheet(data);
+
+    // 設定基本的欄位寬度
+    const wscols = [
+        { wch: 0 },  // 商品ID (隱藏)
+        { wch: 0 },  // 訂單ID (隱藏)
+        { wch: 25 }, // 商品名稱
+        { wch: 10 }, // 單價
+        { wch: 15 }, // 上架日期
+        { wch: 15 }, // 結單日期
+        { wch: 10 }, // 商品狀態
+        { wch: 15 }, // 客戶名稱
+        { wch: 20 }, // 選項
+        { wch: 8 },  // 數量
+        { wch: 12 }, // 小計
+        { wch: 10 }, // 付款狀態
+        { wch: 20 }  // 訂購時間
+    ];
+    ws['!cols'] = wscols;
+
+    xlsx.utils.book_append_sheet(wb, ws, "商品訂單整合報表");
+
+    const buf = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    res.setHeader('Content-Disposition', 'attachment; filename="products_orders_integrated.xlsx"');
+    res.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.send(buf);
+});
+
+// 匯入整合報表並更新資料庫
+app.post('/products/import', upload.single('excel_file'), (req, res) => {
+    if (!req.file) {
+        return res.status(400).send('請選擇要上傳的檔案');
+    }
+
+    const xlsx = require('xlsx');
+    const fs = require('fs');
+
+    try {
+        const workbook = xlsx.readFile(req.file.path);
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const data = xlsx.utils.sheet_to_json(worksheet);
+
+        // 使用交易處理更新
+        const updateTransaction = db.transaction((rows) => {
+            let productsUpdated = new Set();
+            let ordersUpdatedCount = 0;
+
+            for (const row of rows) {
+                const productId = row['商品ID'];
+                const orderId = row['訂單ID'];
+
+                // 更新商品資訊 (若有商品ID)
+                if (productId) {
+                    const price = parseFloat(row['單價']);
+                    if (!isNaN(price)) {
+                        db.prepare(`
+                            UPDATE products 
+                            SET name = ?, price = ?, start_date = ?, end_date = ?
+                            WHERE id = ?
+                        `).run(
+                            row['商品名稱'], 
+                            price, 
+                            row['上架日期'], 
+                            row['結單日期'], 
+                            productId
+                        );
+                        productsUpdated.add(productId);
+                    }
+                }
+
+                // 更新訂單資訊 (若有訂單ID)
+                if (orderId) {
+                    const quantity = parseInt(row['數量']);
+                    if (!isNaN(quantity)) {
+                        db.prepare(`
+                            UPDATE orders 
+                            SET customer_name = ?, options = ?, quantity = ?, payment_status = ?, order_time = ?
+                            WHERE id = ?
+                        `).run(
+                            row['客戶名稱'],
+                            row['選項'],
+                            quantity,
+                            row['付款狀態'] === '已付款' ? 'paid' : 'unpaid',
+                            row['訂購時間'],
+                            orderId
+                        );
+                        ordersUpdatedCount++;
+                    }
+                }
+            }
+            return { productsCount: productsUpdated.size, ordersCount: ordersUpdatedCount };
+        });
+
+        const result = updateTransaction(data);
+
+        // 刪除臨時檔案
+        fs.unlinkSync(req.file.path);
+
+        res.send(`匯入成功！已更新 ${result.productsCount} 項商品，${result.ordersCount} 筆訂單。`);
+    } catch (error) {
+        console.error('匯入出錯:', error);
+        if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+        res.status(500).send('匯入失敗：' + error.message);
+    }
+});
+
 // 儲存新商品
 app.post('/products', (req, res) => {
+
     const { name, vendor, price, start_date, end_date } = req.body;
     db.prepare('INSERT INTO products (name, vendor, price, start_date, end_date) VALUES (?, ?, ?, ?, ?)')
         .run(name, vendor, price, start_date, end_date);
@@ -391,66 +537,6 @@ app.get('/product-report/export', (req, res) => {
     }
 
     res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
-    res.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.send(buf);
-});
-
-// 匯出整合性的商品與訂單 Excel (商品管理頁面使用)
-app.get('/products/export', (req, res) => {
-    const xlsx = require('xlsx');
-    
-    // 查詢所有商品及其訂單明細
-    const sql = `
-        SELECT
-            p.name AS "商品名稱",
-            p.price AS "單價",
-            p.start_date AS "上架日期",
-            p.end_date AS "結單日期",
-            CASE WHEN p.status = 'active' THEN '進行中'
-                 WHEN p.status = 'processing' THEN '下單中'
-                 WHEN p.status = 'ended' THEN '已結束'
-                 ELSE p.status END AS "商品狀態",
-            o.customer_name AS "客戶名稱",
-            o.options AS "選項",
-            o.quantity AS "數量",
-            (o.quantity * p.price) AS "小計",
-            CASE WHEN o.payment_status = 'paid' THEN '已付款' 
-                 WHEN o.payment_status = 'unpaid' THEN '未付款'
-                 ELSE '' END AS "付款狀態",
-            COALESCE(o.order_time, o.created_at) AS "訂購時間"
-        FROM
-            products p
-        LEFT JOIN
-            orders o ON p.id = o.product_id
-        ORDER BY
-            p.name, o.created_at DESC
-    `;
-
-    const data = db.prepare(sql).all();
-
-    const wb = xlsx.utils.book_new();
-    const ws = xlsx.utils.json_to_sheet(data);
-
-    // 設定基本的欄位寬度
-    const wscols = [
-        { wch: 25 }, // 商品名稱
-        { wch: 10 }, // 單價
-        { wch: 15 }, // 上架日期
-        { wch: 15 }, // 結單日期
-        { wch: 10 }, // 商品狀態
-        { wch: 15 }, // 客戶名稱
-        { wch: 20 }, // 選項
-        { wch: 8 },  // 數量
-        { wch: 12 }, // 小計
-        { wch: 10 }, // 付款狀態
-        { wch: 20 }  // 訂購時間
-    ];
-    ws['!cols'] = wscols;
-
-    xlsx.utils.book_append_sheet(wb, ws, "商品訂單整合報表");
-
-    const buf = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
-    res.setHeader('Content-Disposition', 'attachment; filename="products_orders_integrated.xlsx"');
     res.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.send(buf);
 });

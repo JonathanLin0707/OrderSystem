@@ -89,6 +89,42 @@
             <h2>商品列表</h2>
             <button class="btn btn-primary" onclick="location.href='/products/new'">新增商品</button>
             <button class="btn btn-info" onclick="location.href='/products/export'">匯出整合報表</button>
+            <button class="btn btn-warning" onclick="document.getElementById('importFile').click()">匯入整合報表</button>
+            <form id="importForm" action="/products/import" method="POST" enctype="multipart/form-data" style="display: none;">
+                <input type="file" id="importFile" name="excel_file" accept=".xlsx" onchange="submitImport()">
+            </form>
+
+            <script>
+                function submitImport() {
+                    const fileInput = document.getElementById('importFile');
+                    if (fileInput.files.length === 0) return;
+
+                    const formData = new FormData();
+                    formData.append('excel_file', fileInput.files[0]);
+
+                    const btn = document.querySelector('.btn-warning');
+                    const originalText = btn.innerText;
+                    btn.disabled = true;
+                    btn.innerText = '匯入中...';
+
+                    fetch('/products/import', {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(response => response.text())
+                    .then(result => {
+                        alert(result);
+                        location.reload();
+                    })
+                    .catch(error => {
+                        alert('匯入失敗: ' + error.message);
+                    })
+                    .finally(() => {
+                        btn.disabled = false;
+                        btn.innerText = originalText;
+                    });
+                }
+            </script>
             <table>
                 <thead>
                     <tr>
