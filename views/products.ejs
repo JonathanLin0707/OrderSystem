@@ -81,6 +81,7 @@
             %>
             <a href="<%= getTabUrl('active') %>" class="tab-item <%= filters.status === 'active' ? 'active' : '' %>">進行中</a>
             <a href="<%= getTabUrl('processing') %>" class="tab-item <%= filters.status === 'processing' ? 'active' : '' %>">下單中</a>
+            <a href="<%= getTabUrl('arrived') %>" class="tab-item <%= filters.status === 'arrived' ? 'active' : '' %>">已到貨</a>
             <a href="<%= getTabUrl('ended') %>" class="tab-item <%= filters.status === 'ended' ? 'active' : '' %>">已結束</a>
             <a href="<%= getTabUrl('all') %>" class="tab-item <%= filters.status === 'all' ? 'active' : '' %>">全部</a>
         </div>
@@ -154,6 +155,8 @@
                                 <span style="color: green;">進行中</span>
                             <% } else if (product.status === 'processing') { %>
                                 <span style="color: orange;">下單中</span>
+                            <% } else if (product.status === 'arrived') { %>
+                                <span style="color: blue;">已到貨</span>
                             <% } else { %>
                                 <span style="color: gray;">已結束</span>
                             <% } %>
@@ -166,6 +169,10 @@
                                 <button class="btn btn-secondary" onclick="submitPost('/products/<%= product.id %>/status', {status: 'ended'})">結束</button>
                             <% } else if (product.status === 'processing') { %>
                                 <button class="btn btn-success" onclick="submitPost('/products/<%= product.id %>/status', {status: 'active'})">未下單</button>
+                                <button class="btn btn-info" onclick="submitPost('/products/<%= product.id %>/status', {status: 'arrived'})">到貨</button>
+                                <button class="btn btn-secondary" onclick="submitPost('/products/<%= product.id %>/status', {status: 'ended'})">結束</button>
+                            <% } else if (product.status === 'arrived') { %>
+                                <button class="btn btn-success" onclick="submitPost('/products/<%= product.id %>/status', {status: 'active'})">重開</button>
                                 <button class="btn btn-secondary" onclick="submitPost('/products/<%= product.id %>/status', {status: 'ended'})">結束</button>
                             <% } else { %>
                                 <button class="btn btn-info" onclick="submitPost('/products/<%= product.id %>/status', {status: 'active'})">重開</button>

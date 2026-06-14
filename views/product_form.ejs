@@ -44,6 +44,7 @@
                 <select name="status">
                     <option value="active" <%= product.status === 'active' ? 'selected' : '' %>>進行中</option>
                     <option value="processing" <%= product.status === 'processing' ? 'selected' : '' %>>下單中</option>
+                    <option value="arrived" <%= product.status === 'arrived' ? 'selected' : '' %>>已到貨</option>
                     <option value="ended" <%= product.status === 'ended' ? 'selected' : '' %>>已結束</option>
                 </select>
             </div>

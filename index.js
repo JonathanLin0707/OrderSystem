@@ -102,6 +102,7 @@ app.get('/products/export', (req, res) => {
             p.end_date AS "結單日期",
             CASE WHEN p.status = 'active' THEN '進行中'
                  WHEN p.status = 'processing' THEN '下單中'
+                 WHEN p.status = 'arrived' THEN '已到貨'
                  WHEN p.status = 'ended' THEN '已結束'
                  ELSE p.status END AS "商品狀態",
             o.customer_name AS "客戶名稱",
@@ -179,15 +180,24 @@ app.post('/products/import', upload.single('excel_file'), (req, res) => {
                 if (productId) {
                     const price = parseFloat(row['單價']);
                     if (!isNaN(price)) {
+                        const statusMap = {
+                            '進行中': 'active',
+                            '下單中': 'processing',
+                            '已到貨': 'arrived',
+                            '已結束': 'ended'
+                        };
+                        const status = statusMap[row['商品狀態']] || 'active';
+
                         db.prepare(`
                             UPDATE products 
-                            SET name = ?, price = ?, start_date = ?, end_date = ?
+                            SET name = ?, price = ?, start_date = ?, end_date = ?, status = ?
                             WHERE id = ?
                         `).run(
                             row['商品名稱'], 
                             price, 
                             row['上架日期'], 
                             row['結單日期'], 
+                            status,
                             productId
                         );
                         productsUpdated.add(productId);
