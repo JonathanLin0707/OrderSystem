@@ -272,7 +272,24 @@ app.post('/products/:id/delete', (req, res) => {
 // 切換商品狀態
 app.post('/products/:id/status', (req, res) => {
     const { status } = req.body;
-    db.prepare('UPDATE products SET status = ? WHERE id = ?').run(status, req.params.id);
+    const productId = req.params.id;
+
+    // 如果要將狀態改為 ended，需要先檢查是否有未付款訂單
+    if (status === 'ended') {
+        const unpaidOrders = db.prepare('SELECT COUNT(*) as count FROM orders WHERE product_id = ? AND payment_status != ?')
+            .get(productId, 'paid');
+        
+        if (unpaidOrders.count > 0) {
+            return res.send(`
+                <script>
+                    alert('無法結束此產品清單：尚有 ${unpaidOrders.count} 筆訂單未完成付款。');
+                    window.location.href = document.referrer || '/';
+                </script>
+            `);
+        }
+    }
+
+    db.prepare('UPDATE products SET status = ? WHERE id = ?').run(status, productId);
     res.redirect(req.header('Referer') || '/');
 });
 
