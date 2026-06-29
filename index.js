@@ -43,10 +43,10 @@ function getDateRangeCondition(req) {
 // 首頁路徑 (商品列表)
 app.get('/', (req, res) => {
     const { start_from, start_to, end_from, end_to, status } = req.query;
-    
+
     // 預設狀態為 active，若 status 為 'all' 則不加狀態條件
     const currentStatus = status || 'active';
-    
+
     let sql = 'SELECT * FROM products WHERE 1=1';
     const params = [];
 
@@ -75,8 +75,8 @@ app.get('/', (req, res) => {
     sql += ' ORDER BY start_date DESC'; // 預設依上架日期排序
 
     const products = db.prepare(sql).all(...params);
-    res.render('products', { 
-        title: '商品管理', 
+    res.render('products', {
+        title: '商品管理',
         products,
         filters: { start_from, start_to, end_from, end_to, status: currentStatus }
     });
@@ -172,6 +172,30 @@ app.post('/products/import', upload.single('excel_file'), (req, res) => {
             let productsUpdated = new Set();
             let ordersUpdatedCount = 0;
 
+            const updateProductStmt = db.prepare(`
+                UPDATE products
+                SET name = ?, price = ?, start_date = ?, end_date = ?, status = ?
+                WHERE id = ?
+            `);
+
+            const insertProductStmt = db.prepare(`
+                INSERT INTO products
+                (id, name, price, start_date, end_date, status)
+                VALUES (?, ?, ?, ?, ?, ?)
+            `);
+
+            const updateOrderStmt = db.prepare(`
+                UPDATE orders 
+                SET customer_name = ?, options = ?, quantity = ?, payment_status = ?, order_time = ?
+                WHERE id = ?
+            `)
+
+            const insertOrderStmt = db.prepare(`
+                INSERT INTO orders
+                (id, product_id, customer_name, options, quantity, created_at, payment_status, order_time)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            `);
+
             for (const row of rows) {
                 const productId = row['商品ID'];
                 const orderId = row['訂單ID'];
@@ -188,18 +212,24 @@ app.post('/products/import', upload.single('excel_file'), (req, res) => {
                         };
                         const status = statusMap[row['商品狀態']] || 'active';
 
-                        db.prepare(`
-                            UPDATE products 
-                            SET name = ?, price = ?, start_date = ?, end_date = ?, status = ?
-                            WHERE id = ?
-                        `).run(
-                            row['商品名稱'], 
-                            price, 
-                            row['上架日期'], 
-                            row['結單日期'], 
+                        const result = updateProductStmt.run(
+                            row['商品名稱'],
+                            price,
+                            row['上架日期'],
+                            row['結單日期'],
                             status,
                             productId
                         );
+                        if (result.changes === 0) {
+                            insertProductStmt.run(
+                                productId,
+                                row['商品名稱'],
+                                price,
+                                row['上架日期'],
+                                row['結單日期'],
+                                status
+                            );
+                        }
                         productsUpdated.add(productId);
                     }
                 }
@@ -208,11 +238,7 @@ app.post('/products/import', upload.single('excel_file'), (req, res) => {
                 if (orderId) {
                     const quantity = parseInt(row['數量']);
                     if (!isNaN(quantity)) {
-                        db.prepare(`
-                            UPDATE orders 
-                            SET customer_name = ?, options = ?, quantity = ?, payment_status = ?, order_time = ?
-                            WHERE id = ?
-                        `).run(
+                        const result = updateOrderStmt.run(
                             row['客戶名稱'],
                             row['選項'],
                             quantity,
@@ -220,6 +246,18 @@ app.post('/products/import', upload.single('excel_file'), (req, res) => {
                             row['訂購時間'],
                             orderId
                         );
+                        if (result.changes === 0) {
+                            insertOrderStmt.run(
+                                orderId,
+                                productId,
+                                row['客戶名稱'],
+                                row['選項'],
+                                quantity,
+                                row['訂購時間'],
+                                row['付款狀態'] === '已付款' ? 'paid' : 'unpaid',
+                                row['訂購時間']
+                            );
+                        }
                         ordersUpdatedCount++;
                     }
                 }
@@ -278,7 +316,7 @@ app.post('/products/:id/status', (req, res) => {
     if (status === 'ended') {
         const unpaidOrders = db.prepare('SELECT COUNT(*) as count FROM orders WHERE product_id = ? AND payment_status != ?')
             .get(productId, 'paid');
-        
+
         if (unpaidOrders.count > 0) {
             return res.send(`
                 <script>
@@ -406,7 +444,7 @@ app.get('/dashboard', (req, res) => {
         .filter(p => p.total_quantity > 0)
         .sort((a, b) => b.total_quantity - a.total_quantity)
         .slice(0, 3);
-    
+
     const topProductsAmount = [...productStats]
         .filter(p => p.total_amount > 0)
         .sort((a, b) => b.total_amount - a.total_amount)
@@ -422,13 +460,13 @@ app.get('/dashboard', (req, res) => {
         .sort((a, b) => b.total_spend - a.total_spend)
         .slice(0, 3);
 
-    res.render('dashboard', { 
-        title: '統計儀表板', 
-        productStats, 
-        customerStats, 
-        optionStats, 
-        date_from, 
-        date_to, 
+    res.render('dashboard', {
+        title: '統計儀表板',
+        productStats,
+        customerStats,
+        optionStats,
+        date_from,
+        date_to,
         grandTotal,
         topData: {
             products: { qty: topProductsQty, amount: topProductsAmount },
@@ -677,7 +715,7 @@ app.get('/product-report', (req, res) => {
             ORDER BY p.name, COALESCE(o.order_time, o.created_at) DESC
         `;
         const allOrders = db.prepare(sql).all(...dateParams);
-        
+
         // 處理資料以按商品名稱分組
         const groupedOrders = allOrders.reduce((acc, item) => {
             if (!acc[item.product_name]) {
@@ -689,7 +727,7 @@ app.get('/product-report', (req, res) => {
             acc[item.product_name].orders.push(item);
             return acc;
         }, {});
-        
+
         orders = Object.values(groupedOrders);
     }
 
